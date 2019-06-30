@@ -469,6 +469,8 @@ fn parse_tile(data: &Vec<u8>, pos: usize) -> (u16, RawTile, u8) {
     (repetitions, tile, offset as u8)
 }
 
+// TODO: Return the data (tile_data) instead of making the caller create one
+// TODO: Take the header instead?
 fn populate_tiles(
     tile_data: &mut Vec<RawTile>,
     file_buffer: &Vec<u8>,
@@ -490,7 +492,7 @@ fn populate_tiles(
         println!("Block count: {}", block_count);
         println!("X: {}, Y: {}", block_count / 1200, block_count % 1200);
         */
-        if (block_count % 1200) == 0 && ((block_count / 1200) +1) % 120 == 0 {
+        if (block_count % 1200) == 0 && ((block_count / 1200) + 1) % 120 == 0 {
             //println!("Tile x: {}", block_count / 1200);
         }
 
@@ -511,6 +513,162 @@ fn populate_tiles(
     if block_count != total_tile_count {
         panic!("Block count does not match: {}", block_count);
     }
+}
+
+enum Item {
+    None,
+    Normal(u16, u32),
+    Buffed(u16, u32, u8),
+}
+
+impl Item {
+    fn print(&self) {
+        match self {
+            Item::None => println!("No Item"),
+
+            Item::Normal(amount, item_id) => {
+                println!("{}(id): {}(amount)", item_id, amount);
+            }
+
+            Item::Buffed(amount, item_id, buff) => {
+                println!("{}(id): {}(amount) with {}(buff)", item_id, amount, buff);
+            }
+        }
+    }
+    fn from_buffer(file_buffer: &Vec<u8>, item_pos: usize) -> Item {
+
+        let amount = file_buffer[item_pos] as u16 | ((file_buffer[item_pos + 1] as u16) << 8);
+        if amount == 0 {
+            return Item::None;
+        }
+
+        let buff = file_buffer[item_pos + 6];
+
+        let item_id = file_buffer[item_pos + 2] as u32
+            | ((file_buffer[item_pos + 3] as u32) << 8)
+            | ((file_buffer[item_pos + 4] as u32) << 16)
+            | ((file_buffer[item_pos + 5] as u32) << 24);
+
+        if buff == 0 {
+            return Item::Normal(amount, item_id);
+        }
+
+        Item::Buffed(amount, item_id, buff)
+    }
+}
+
+fn parse_consecutive_items(
+    buffer: &Vec<u8>,
+    items_start: usize,
+    item_count: usize,
+) -> (Vec<Item>, usize) {
+    let mut items: Vec<Item> = Vec::with_capacity(item_count);
+    let mut item_start = items_start;
+    let mut item_count = item_count;
+
+    while item_count > 0 {
+        let item = Item::from_buffer(&buffer, item_start);
+
+        item_start += match item {
+            Item::None => 2,
+            Item::Normal(_, _) | Item::Buffed(_, _, _) => 7,
+        };
+
+        item_count -= 1;
+        items.push(item);
+    }
+
+    (items, item_start - items_start)
+
+}
+
+fn parse_chest_items(buffer: &Vec<u8>, items_start: usize) -> (Vec<Item>, usize) {
+    parse_consecutive_items(&buffer, items_start, 40)
+}
+
+struct Chest {
+    name: String,
+    x: usize,
+    y: usize,
+    items: Vec<Item>,
+    original_size: usize,
+}
+
+impl Chest {
+    fn print(&self) {
+        if self.name.is_empty() {
+            println!(
+                "Chest @ ({}, {}), size {}:",
+                self.x, self.y, self.original_size
+            );
+        } else {
+            println!(
+                "'{}' @ ({}, {}), size {}:",
+                self.name, self.x, self.y, self.original_size
+            );
+        }
+
+        for item in self.items.iter() {
+            print!("\t");
+            item.print();
+        }
+    }
+
+    fn from_buffer(buffer: &Vec<u8>, chest_start: usize) -> Chest {
+        let name_size = buffer[chest_start + 8] as usize;
+
+        let mut name = String::new();
+
+        for letter_offset in (chest_start + 8 + 1)..(chest_start + 8 + 1 + name_size) {
+            name.push(buffer[letter_offset] as char);
+        }
+        let (items, items_size) = parse_chest_items(
+            &buffer,
+            // .. + size of the string + string size byte + position bytes
+            chest_start + name_size + 1 + 8,
+        );
+
+        Chest {
+            name,
+            x: (buffer[chest_start + 0] as u32
+                | ((buffer[chest_start + 1] as u32) << 8)
+                | ((buffer[chest_start + 2] as u32) << 16)
+                | ((buffer[chest_start + 3] as u32) << 24)) as usize,
+
+            y: (buffer[chest_start + 4] as u32
+                | ((buffer[chest_start + 5] as u32) << 8)
+                | ((buffer[chest_start + 6] as u32) << 16)
+                | ((buffer[chest_start + 7] as u32) << 24)) as usize,
+
+            items,
+            original_size: 8 + 1 + name_size + items_size,
+        }
+    }
+}
+
+// TODO: Take the header instead?
+fn populate_chests(buffer: &Vec<u8>, chest_start: usize) -> Vec<Chest> {
+    let mut chest_count = buffer[chest_start] as u16 | (buffer[chest_start + 1] as u16) << 8;
+
+    // I think these two bytes are redudante but not completely sure
+    let capacity = (buffer[chest_start + 2] as u16 | (buffer[chest_start + 3] as u16) << 8);
+    if capacity != 40 {
+        panic!("Chest capacity should always be 40 but was {}. Handling other sizes is not implemented", capacity);
+    }
+
+    let mut chests = Vec::with_capacity(chest_count as usize);
+    let mut pos = chest_start + 4;
+
+    while chest_count > 0 {
+        let chest = Chest::from_buffer(&buffer, pos);
+        pos += chest.original_size;
+
+        chests.push(chest);
+
+        chest_count -= 1;
+    }
+
+    chests
 }
 
 
@@ -573,14 +731,23 @@ fn main() -> io::Result<()> {
 
     //tile.print();*/
 
+    //println!("Sized: {}", mem::size_of::<Chest>());
 
     let mut tile_data: Vec<RawTile> = Vec::with_capacity(4200 * 1200);
 
-    //println!("Size of world data: {}", mem::size_of::<RawTile>());
-
     //println!("\n\nPopulation:\n");
+    //populate_tiles(&mut tile_data, &buffer, header.pointers[1], 4200 * 1200);
 
-    populate_tiles(&mut tile_data, &buffer, header.pointers[1], 4200 * 1200);
+
+    //Chest::from_buffer(&buffer, 2634477).print();
+    //Chest::from_buffer(&buffer, 2634733).print();
+    /*for e in (2634470 as usize)..(2634500 as usize) {
+    println!("{}: {}", e, buffer[e]);
+    }*/
+
+    for chest in populate_chests(&buffer, header.pointers[2]) {
+        chest.print();
+    }
 
     Ok(())
 }
