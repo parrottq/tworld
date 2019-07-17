@@ -1,4 +1,6 @@
 
+use crate::metadata;
+use crate::parsing::PositionedBuffer;
 // Data
 // 0-8: tile id
 // 9-16: liquid amount
@@ -10,7 +12,7 @@
 // 34: actuator selected
 // 35-39: tile paint
 // 40-44: wall paint
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct RawTile {
     data: u64,
     important_x: u16,
@@ -45,17 +47,19 @@ impl RawTile {
             self.get_actuator(),
             self.get_actuator_enabled(),
             self.get_tile_paint(),
-            self.get_wall_paint()
+            self.get_wall_paint(),
         )
 
     }
 
     pub fn new() -> RawTile {
-        RawTile {
+        let mut e = RawTile {
             data: 0,
             important_x: 0,
             important_y: 0,
-        }
+        };
+        e.set_tile_id(511);
+        e
     }
 
     pub fn set_tile_id(&mut self, tile_id: u16) {
@@ -191,71 +195,54 @@ impl RawTile {
         self.important_y = y;
     }
 
-    pub fn set_important_bytes(&mut self, x_1: u8, x_2: u8, y_1: u8, y_2: u8) {
-        self.set_important(
-            x_1 as u16 | (x_2 as u16) << 8,
-            y_1 as u16 | (y_2 as u16) << 8,
-        );
-    }
-
 }
 
-pub fn parse_tile(data: &Vec<u8>, pos: usize) -> (u16, RawTile, u8) {
+pub fn parse_tile(pbuffer: &mut PositionedBuffer) -> (u16, RawTile) {
     let mut tile = RawTile::new();
-    let mut offset = 1;
+
+    let flag1 = pbuffer.read_u8();
+    let mut flag3 = 0;
     let mut flag_level = 1;
 
-
-    if (data[pos] >> 0) & 0b1 == 0b1 {
+    // Flag parsing
+    if (flag1 >> 0) & 0b1 == 0b1 {
         //println!("Flag2");
+        let flag2 = pbuffer.read_u8();
         flag_level = 2;
-        offset += 1;
 
-        tile.set_red_wiring((data[pos + 1] >> 1) & 0b1 == 0b1);
-        tile.set_blue_wiring((data[pos + 1] >> 2) & 0b1 == 0b1);
-        tile.set_green_wiring((data[pos + 1] >> 3) & 0b1 == 0b1);
+        tile.set_red_wiring((flag2 >> 1) & 0b1 == 0b1);
+        tile.set_blue_wiring((flag2 >> 2) & 0b1 == 0b1);
+        tile.set_green_wiring((flag2 >> 3) & 0b1 == 0b1);
 
-        // TODO: alt-slope, actuator; enabled
+        tile.set_tile_alter((flag2 >> 4) & 0b111);
 
-        tile.set_tile_alter((data[pos + 1] >> 4) & 0b111);
-
-        if (data[pos + 1] >> 0) & 0b1 == 0b1 {
+        if (flag2 >> 0) & 0b1 == 0b1 {
             //println!("Flag3");
+            flag3 = pbuffer.read_u8();
             flag_level = 3;
-            offset += 1;
 
-            tile.set_actuator((data[pos + 2] >> 1) & 0b1 == 0b1);
-            tile.set_actuator_enabled((data[pos + 2] >> 2) & 0b1 == 0b1);
+            tile.set_actuator((flag3 >> 1) & 0b1 == 0b1);
+            tile.set_actuator_enabled((flag3 >> 2) & 0b1 == 0b1);
         }
     }
 
-    if (data[pos] >> 1) & 0b1 == 0b1 {
+    // Tile ID parsing
+    if (flag1 >> 1) & 0b1 == 0b1 {
         //println!("Tile present, offset {}", pos + offset);
 
-        if (data[pos] >> 5) & 0b1 == 0b1 {
+        if (flag1 >> 5) & 0b1 == 0b1 {
             // u16 tile
             //println!("u16 tile");
-            tile.set_tile_id(data[pos + offset] as u16 | ((data[pos + offset + 1] as u16) << 8));
-
-            offset += 2;
+            tile.set_tile_id(pbuffer.read_u16());
         } else {
             // u8 tile
             //println!("u8 tile");
-            tile.set_tile_id(data[pos + offset] as u16);
-
-            offset += 1;
+            tile.set_tile_id(pbuffer.read_u8() as u16);
         }
 
         if RawTile::is_tile_important(tile.get_tile_id()) {
             // Frame X & Y
-            tile.set_important_bytes(
-                data[pos + offset + 0],
-                data[pos + offset + 1],
-                data[pos + offset + 2],
-                data[pos + offset + 3],
-            );
-            offset += 4;
-            // TODO: Actually store this
+            tile.set_important(pbuffer.read_u16(), pbuffer.read_u16());
         }
 
     } else {
@@ -263,67 +250,53 @@ pub fn parse_tile(data: &Vec<u8>, pos: usize) -> (u16, RawTile, u8) {
         tile.set_tile_id(511);
     }
 
-
-    if flag_level == 3 && (data[pos + 2] >> 3) & 0b1 == 0b1 {
+    if flag_level == 3 && (flag3 >> 3) & 0b1 == 0b1 {
         //println!("Tile is painted");
 
-        tile.set_tile_paint(data[pos + offset]);
-        offset += 1;
+        tile.set_tile_paint(pbuffer.read_u8());
     }
 
-    if (data[pos] >> 2) & 0b1 == 0b1 {
+    if (flag1 >> 2) & 0b1 == 0b1 {
         //println!("Wall is present");
 
-        tile.set_wall_id(data[pos + offset]);
-        offset += 1;
+        tile.set_wall_id(pbuffer.read_u8());
     }
 
-    if flag_level == 3 && (data[pos + 2] >> 4) & 0b1 == 0b1 {
-        //println!("{}: Wall is painted", data[pos + offset]);
+    if flag_level == 3 && (flag3 >> 4) & 0b1 == 0b1 {
+        //println!("Wall is painted");
 
-        tile.set_wall_paint(data[pos + offset]);
-        offset += 1;
+        tile.set_wall_paint(pbuffer.read_u8());
     }
 
-    if (data[pos] >> 3) & 0b11 != 0b0 {
+    if (flag1 >> 3) & 0b11 != 0b0 {
         //println!("Fluid present");
-        tile.set_fluid_type((data[pos] >> 3) & 0b11);
+        tile.set_fluid_type((flag1 >> 3) & 0b11);
 
-        tile.set_fluid_amount(data[pos + offset]);
-        offset += 1;
+        tile.set_fluid_amount(pbuffer.read_u8());
     }
 
-    let mut repetitions = 0;
-    if (data[pos] >> 6) & 0b11 != 0b0 {
+    // Run Length Encoding parsing
+    let mut reps = 0;
+    if (flag1 >> 6) & 0b11 != 0b0 {
         //print!("RLE present: ");
 
-        if (data[pos] >> 7) & 0b1 == 0b1 {
+        reps = if (flag1 >> 7) & 0b1 == 0b1 {
             // u16 RLE
             //println!("u16");
-            repetitions = data[pos + offset] as u16 | ((data[pos + offset + 1] as u16) << 8);
-
-            offset += 2;
+            pbuffer.read_u16()
         } else {
             // u8 RLE
             //println!("u8");
-            repetitions = data[pos + offset] as u16;
+            pbuffer.read_u8() as u16
+        };
 
-            offset += 1;
-        }
-
-        if (data[pos] >> 6) & 0b11 == 0b10 {
+        if (flag1 >> 6) & 0b11 == 0b10 {
             //println!("Alignment flag!");
         }
     } else {
         //println!("No RLE");
     }
 
-    //println!("Total offset: {}", offset);
-    //println!("Repetitions: {}\n", repetitions);
-    //tile.print();
-    //println!("");
-
-    // TODO: Test this
     for e in [419, 420, 421, 422, 423, 424, 425, 440, 441, 442, 460].iter() {
         // 443
         if tile.get_tile_id() == *e {
@@ -331,51 +304,30 @@ pub fn parse_tile(data: &Vec<u8>, pos: usize) -> (u16, RawTile, u8) {
         }
     }
 
-    (repetitions, tile, offset as u8)
+    (reps, tile)
 }
 
-// TODO: Return the data (tile_data) instead of making the caller create one
-// TODO: Take the header instead?
 pub fn populate_tiles(
-    tile_data: &mut Vec<RawTile>,
-    file_buffer: &Vec<u8>,
-    tile_start: usize,
-    total_tile_count: usize,
-) {
-    let mut block_count = 0;
-    let mut tile_start = tile_start;
+    pbuffer: &mut PositionedBuffer,
+    world_metadata: &metadata::WorldHeader,
+) -> Vec<RawTile> {
+    let mut tile_count = world_metadata.get_tile_count();
 
-    while block_count < total_tile_count {
-        //println!("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
-        //println!("Parse location: {}", tile_start);
-        let (duplicate_num, tile, tile_size) = parse_tile(&file_buffer, tile_start);
-        /*println!(
-            "Parse result: dup {}, tile_size {}",
-            duplicate_num, tile_size
-        );
+    let mut tiles = Vec::with_capacity(tile_count as usize);
 
-        println!("Block count: {}", block_count);
-        println!("X: {}, Y: {}", block_count / 1200, block_count % 1200);
-        */
-        if (block_count % 1200) == 0 && ((block_count / 1200) + 1) % 120 == 0 {
-            //println!("Tile x: {}", block_count / 1200);
+    while tile_count > 0 {
+        //println!("Tile_count: {}", tile_count);
+        let (repetitions, tile) = parse_tile(pbuffer);
+
+        for _ in 0..(repetitions + 1) {
+            tiles.push(tile);
         }
-
-        // Populate the blocks
-        for _e in 0..(duplicate_num as usize + 1) {
-            //tile_data[tile_pos] = tile;
-            tile_data.push(tile);
-        }
-
-        // the current tile + duplicate tiles added to total count
-        block_count += 1 + duplicate_num as usize;
-
-        tile_start += tile_size as usize;
-
+        tile_count -= 1 + repetitions as u32;
     }
 
-    println!("Tile count: {}", tile_start);
-    if block_count != total_tile_count {
-        panic!("Block count does not match: {}", block_count);
+    if tile_count != 0 {
+        panic!("Block count does not match: {}", tile_count);
     }
+
+    tiles
 }

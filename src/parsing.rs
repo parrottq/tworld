@@ -4,7 +4,7 @@ use num::ToPrimitive;
 
 pub struct PositionedBuffer {
     data: Vec<u8>,
-    pos: usize,
+    pub pos: usize,
 }
 
 impl PositionedBuffer {
@@ -37,7 +37,7 @@ impl PositionedBuffer {
 
     pub fn read_bool(&mut self) -> bool {
         //print!("B");
-        if self.read_u8() == 1 {
+        if self.read_u8() != 0 {
             true
         } else {
             false

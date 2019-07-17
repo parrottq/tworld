@@ -1,11 +1,11 @@
 use crate::parsing::PositionedBuffer;
 
 pub struct Header {
-    release: u32,
-    filetype: u8,
-    revision: u32,
-    is_favorite: u64,
-    pointers: Vec<usize>,
+    pub release: u32,
+    pub filetype: u8,
+    pub revision: u32,
+    pub is_favorite: u64,
+    pub pointers: Vec<usize>,
 }
 
 impl Header {
@@ -63,9 +63,9 @@ impl Header {
 }
 
 pub struct Footer {
-    boolean: bool,
-    world_name: String,
-    world_id: u32,
+    pub boolean: bool,
+    pub world_name: String,
+    pub world_id: u32,
 }
 
 impl Footer {

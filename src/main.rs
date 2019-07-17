@@ -9,12 +9,13 @@ mod parsing;
 use parsing::PositionedBuffer;
 
 mod chest;
+mod container;
 mod metadata;
 mod misc;
 mod npc;
 mod tile;
 mod world;
-mod container;
+
 
 fn main() -> io::Result<()> {
     let file_name = "signtest.wld";
@@ -38,8 +39,8 @@ fn main() -> io::Result<()> {
 
     file.read_to_end(&mut buffer)?;
 
-    //let mut posbuff = PositionedBuffer::new(buffer, 0);
-    //let header = Header::from_buffer(&mut posbuff);
+    //let mut posbuff = positionedbuffer::new(buffer, 0);
+    //let header = header::from_buffer(&mut posbuff);
     //header.print_pointers();
 
     /*WorldHeader::from_buffer(&mut posbuff).print();
@@ -92,10 +93,23 @@ fn main() -> io::Result<()> {
 
     //println!("Sized: {}", std::mem::size_of::<WorldHeader>());
 
-    let mut tile_data: Vec<tile::RawTile> = Vec::with_capacity(4200 * 1200);
+    let mut pbuffer = PositionedBuffer::new(buffer, 0);
+    let header = container::Header::from_buffer(&mut pbuffer);
+    header.print_pointers();
 
-    //println!("\n\nPopulation:\n");
-    tile::populate_tiles(&mut tile_data, &buffer, 2805, 4200 * 1200);
+    pbuffer.pos = header.pointers[0];
+    let meta = metadata::WorldHeader::from_buffer(&mut pbuffer);
+    println!(
+        "{} * {} = {}",
+        meta.world_max_width,
+        meta.world_max_height,
+        meta.get_tile_count()
+    );
+
+    pbuffer.pos = header.pointers[1];
+    println!("Starting new...");
+    let tile_data = tile::populate_tiles(&mut pbuffer, &meta);
+    println!("Done.\n\n");
 
 
     //Chest::from_buffer(&buffer, 2634477).print();
