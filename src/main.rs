@@ -93,24 +93,16 @@ fn main() -> io::Result<()> {
 
     //println!("Sized: {}", std::mem::size_of::<WorldHeader>());
 
-    let mut pbuffer = PositionedBuffer::new(buffer, 0);
-    let header = container::Header::from_buffer(&mut pbuffer);
-    header.print_pointers();
 
-    pbuffer.pos = header.pointers[0];
-    let meta = metadata::WorldHeader::from_buffer(&mut pbuffer);
-    println!(
-        "{} * {} = {}",
-        meta.world_max_width,
-        meta.world_max_height,
-        meta.get_tile_count()
-    );
-
-    pbuffer.pos = header.pointers[1];
     println!("Starting new...");
-    let tile_data = tile::populate_tiles(&mut pbuffer, &meta);
+    let mut pbuffer = PositionedBuffer::new(buffer, 0);
+    let wld = world::World::from_buffer(&mut pbuffer);
     println!("Done.\n\n");
 
+    for villager in wld.npcs.iter() {
+        villager.print();
+        println!();
+    }
 
     //Chest::from_buffer(&buffer, 2634477).print();
     //Chest::from_buffer(&buffer, 2634733).print();

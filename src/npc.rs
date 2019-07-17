@@ -3,8 +3,8 @@ use crate::parsing::PositionedBuffer;
 pub struct NPC {
     variety: u32,
     name: String,
-    x: f32,
-    y: f32,
+    x: f32, // This is in pixels not tiles. 1 tile = 16 pixels
+    y: f32, // ..
     homeless: bool,
     x_home: u32,
     y_home: u32,
@@ -33,6 +33,29 @@ impl NPC {
             homeless: false,
             x_home: 0,
             y_home: 0,
+        }
+    }
+
+    pub fn print(&self) {
+        println!("{}: Type", self.variety);
+
+        if self.name.is_empty() {
+            println!("No name");
+        } else {
+            println!("{}: Name", self.name);
+        }
+
+        println!(
+            "@ P({}, {})\n@ T({}, {})",
+            self.x,
+            self.y,
+            self.x / 16.0,
+            self.y / 16.0
+        );
+
+        println!("{}: Homeless", self.homeless);
+        if !self.homeless {
+            println!("Home @ ({}, {})", self.x_home, self.y_home);
         }
     }
 }
