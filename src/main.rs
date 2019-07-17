@@ -14,8 +14,7 @@ extern crate num;
 use num::ToPrimitive;
 
 struct Header {
-    release: i32,
-    magic: [u8; 7],
+    release: u32,
     filetype: u8,
     revision: u32,
     is_favorite: u64,
@@ -23,55 +22,35 @@ struct Header {
 }
 
 impl Header {
-    fn new(mut file: &File) -> Header {
-        let mut release_raw = [0; 4];
-        file.read(&mut release_raw).unwrap();
-        let mut release_cur = Cursor::new(release_raw);
+    
+    fn from_buffer(pbuffer: &mut PositionedBuffer) -> Header {
+            let release = pbuffer.read_u32();
 
-        let mut magic_raw = [0; 7];
-        file.read(&mut magic_raw).unwrap();
+            for reference in ['r', 'e', 'l', 'o', 'g','i','c'].iter() {
+                if *reference != (pbuffer.read_u8() as char) {
+                    println!("'relogic' siganture does not match");
+                }
+            }
 
-        let mut filetype_raw = [0; 1];
-        file.read(&mut filetype_raw).unwrap();
+            let filetype = pbuffer.read_u8();
+            let revision = pbuffer.read_u32();
+            let is_favorite = pbuffer.read_u64();
+            let pointers = pbuffer.read_list(&mut PositionedBuffer::read_u32, &mut PositionedBuffer::read_u16).iter().map(|&x| x as usize).collect();
 
-        let mut revision_raw = [0; 4];
-        file.read(&mut revision_raw).unwrap();
-
-        let mut fav_raw = [0; 8];
-        file.read(&mut fav_raw).unwrap();
-
-        let mut pointers: Vec<usize> = Vec::new();
-        let mut point_raw = [0; 2];
-        file.read(&mut point_raw).unwrap();
-
-        let point_count = Cursor::new(point_raw).read_u16::<LittleEndian>().unwrap();
-
-        for _ in 0..point_count {
-            let mut value = [0; 4];
-            file.read(&mut value).unwrap();
-            //println!("{:?}", value);
-
-            pointers.push(Cursor::new(value).read_u32::<LittleEndian>().unwrap() as usize);
+            Header {
+                release,
+                filetype,
+                revision,
+                is_favorite,
+                pointers,
+            }
         }
-
-
-        Header {
-            release: release_cur.read_i32::<LittleEndian>().unwrap(),
-            magic: magic_raw,
-            filetype: filetype_raw[0],
-            revision: Cursor::new(revision_raw)
-                .read_u32::<LittleEndian>()
-                .unwrap(),
-            is_favorite: Cursor::new(fav_raw).read_u64::<LittleEndian>().unwrap(),
-            pointers,
-        }
-    }
 
     fn to_string(&self) -> String {
         // TODO: Find a way to do this in rust
         format!(
-            "{}, {:?}, {}, {}, {}, {:?}",
-            self.release, self.magic, self.filetype, self.revision, self.is_favorite, self.pointers
+            "{}, {}, {}, {}, {:?}",
+            self.release, self.filetype, self.revision, self.is_favorite, self.pointers
         )
     }
 
@@ -497,61 +476,32 @@ impl Item {
             }
         }
     }
-    fn from_buffer(file_buffer: &Vec<u8>, item_pos: usize) -> Item {
 
-        let amount = file_buffer[item_pos] as u16 | ((file_buffer[item_pos + 1] as u16) << 8);
+    fn from_buffer(pbuffer: &mut PositionedBuffer) -> Item {
+        let amount = pbuffer.read_u16();
         if amount == 0 {
             return Item::None;
         }
 
-        let buff = file_buffer[item_pos + 6];
-
-        let item_id = file_buffer[item_pos + 2] as u32
-            | ((file_buffer[item_pos + 3] as u32) << 8)
-            | ((file_buffer[item_pos + 4] as u32) << 16)
-            | ((file_buffer[item_pos + 5] as u32) << 24);
+        let id = pbuffer.read_u32();
+        let buff = pbuffer.read_u8();
 
         if buff == 0 {
-            return Item::Normal(amount, item_id);
+            return Item::Normal(amount, id);
         }
 
-        Item::Buffed(amount, item_id, buff)
+        Item::Buffed(amount, id, buff)
     }
 }
 
-fn parse_consecutive_items(
-    buffer: &Vec<u8>,
-    items_start: usize,
-    item_count: usize,
-) -> (Vec<Item>, usize) {
-    let mut items: Vec<Item> = Vec::with_capacity(item_count);
-    let mut item_start = items_start;
-    let mut item_count = item_count;
-
-    while item_count > 0 {
-        let item = Item::from_buffer(&buffer, item_start);
-
-        item_start += match item {
-            Item::None => 2,
-            Item::Normal(_, _) | Item::Buffed(_, _, _) => 7,
-        };
-
-        item_count -= 1;
-        items.push(item);
-    }
-
-    (items, item_start - items_start)
-
-}
-
-fn parse_chest_items(buffer: &Vec<u8>, items_start: usize) -> (Vec<Item>, usize) {
-    parse_consecutive_items(&buffer, items_start, 40)
+fn parse_chest_items(pbuffer: &mut PositionedBuffer) -> Vec<Item> {
+    pbuffer.read_list(&mut Item::from_buffer, &mut |_| 40)
 }
 
 struct Chest {
     name: String,
-    x: usize,
-    y: usize,
+    x: u32,
+    y: u32,
     items: Vec<Item>,
     original_size: usize,
 }
@@ -576,68 +526,33 @@ impl Chest {
         }
     }
 
-    fn from_buffer(buffer: &Vec<u8>, chest_start: usize) -> Chest {
-        let name_size = buffer[chest_start + 8] as usize;
-
-        let mut name = String::new();
-
-        for letter_offset in (chest_start + 8 + 1)..(chest_start + 8 + 1 + name_size) {
-            name.push(buffer[letter_offset] as char);
-        }
-
-        let (items, items_size) = parse_chest_items(
-            &buffer,
-            // .. + size of the string + string size byte + position bytes
-            chest_start + name_size + 1 + 8,
-        );
-
+    fn from_buffer(pbuffer: &mut PositionedBuffer) -> Chest {
         Chest {
-            name,
-            x: (buffer[chest_start + 0] as u32
-                | ((buffer[chest_start + 1] as u32) << 8)
-                | ((buffer[chest_start + 2] as u32) << 16)
-                | ((buffer[chest_start + 3] as u32) << 24)) as usize,
-
-            y: (buffer[chest_start + 4] as u32
-                | ((buffer[chest_start + 5] as u32) << 8)
-                | ((buffer[chest_start + 6] as u32) << 16)
-                | ((buffer[chest_start + 7] as u32) << 24)) as usize,
-
-            items,
-            original_size: 8 + 1 + name_size + items_size,
+            x: pbuffer.read_u32(),
+            y: pbuffer.read_u32(),
+            name: pbuffer.read_pstring(),
+            items: parse_chest_items(pbuffer),
+            original_size: 0,
         }
     }
 }
 
-// TODO: Take the header instead?
-fn populate_chests(buffer: &Vec<u8>, chest_start: usize) -> Vec<Chest> {
-    let mut chest_count = buffer[chest_start] as u16 | (buffer[chest_start + 1] as u16) << 8;
+fn populate_chests(pbuffer: &mut PositionedBuffer) -> Vec<Chest> {
+    let count = pbuffer.read_u16();
 
     // I think these two bytes are redudante but not completely sure
-    let capacity = (buffer[chest_start + 2] as u16 | (buffer[chest_start + 3] as u16) << 8);
+    let capacity = pbuffer.read_u16();
     if capacity != 40 {
         panic!("Chest capacity should always be 40 but was {}. Handling other sizes is not implemented", capacity);
     }
 
-    let mut chests = Vec::with_capacity(chest_count as usize);
-    let mut pos = chest_start + 4;
-
-    while chest_count > 0 {
-        let chest = Chest::from_buffer(&buffer, pos);
-        pos += chest.original_size;
-
-        chests.push(chest);
-
-        chest_count -= 1;
-    }
-
-    chests
+    pbuffer.read_list(&mut Chest::from_buffer, &mut |_| count)
 }
 
 struct Sign {
     text: String,
-    x: usize,
-    y: usize,
+    x: u32,
+    y: u32,
 }
 
 impl Sign {
@@ -650,48 +565,17 @@ impl Sign {
         }
     }
 
-    fn get_size(&self) -> usize {
-        1 + 8 + self.text.len()
-    }
-
-    fn from_buffer(buffer: &Vec<u8>, sign_start: usize) -> Sign {
-        let text_size = buffer[sign_start] as usize;
-        let mut text = String::new();
-
-        for letter_offset in (sign_start + 1)..(sign_start + 1 + text_size) {
-            text.push(buffer[letter_offset] as char);
-        }
-
+    fn from_buffer(pbuffer: &mut PositionedBuffer) -> Sign {
         Sign {
-            x: (buffer[sign_start + text_size + 1] as u32
-                | ((buffer[sign_start + text_size + 2] as u32) << 8)
-                | ((buffer[sign_start + text_size + 3] as u32) << 16)
-                | ((buffer[sign_start + text_size + 4] as u32) << 24)) as usize,
-            y: (buffer[sign_start + text_size + 5] as u32
-                | ((buffer[sign_start + text_size + 6] as u32) << 8)
-                | ((buffer[sign_start + text_size + 7] as u32) << 16)
-                | ((buffer[sign_start + text_size + 8] as u32) << 24)) as usize,
-            text,
+            text: pbuffer.read_pstring(),
+            x: pbuffer.read_u32(),
+            y: pbuffer.read_u32(),
         }
     }
 }
 
-fn populate_sign(buffer: &Vec<u8>, sign_start: usize) -> Vec<Sign> {
-    let mut sign_count = buffer[sign_start] as usize | (buffer[sign_start + 1] as usize) << 8;
-    let mut signs: Vec<Sign> = Vec::with_capacity(sign_count);
-
-    let mut pos = sign_start + 2;
-
-    while sign_count > 0 {
-        let sign = Sign::from_buffer(&buffer, pos);
-        pos += sign.get_size();
-
-        signs.push(sign);
-        sign_count -= 1;
-    }
-
-
-    signs
+fn populate_sign(pbuffer: &mut PositionedBuffer) -> Vec<Sign> {
+    pbuffer.read_list(&mut Sign::from_buffer, &mut PositionedBuffer::read_u16)
 }
 
 #[derive(Debug)]
@@ -1106,11 +990,6 @@ impl WorldHeader {
         println!("{:?}", self);
     }
 
-
-    fn get_world_id(&self) -> u32 {
-        //self._get_u32(offset: usize)
-        0
-    }
 }
 
 struct PositionedBuffer {
@@ -1394,18 +1273,18 @@ struct World {
 }
 
 fn main() -> io::Result<()> {
-    let file_name = "test1.wld";
+    let file_name = "signtest.wld";
     let mut file = File::open(file_name)?;
 
-    let header = Header::new(&mut file);
+    //let header = Header::new(&mut file);
 
     //println!("{}", header.to_string());
-    header.print_pointers();
+    //header.print_pointers();
 
     //Header::new(&mut File::open("npc0.wld").unwrap()).print_pointers();
     //Header::new(&mut File::open("npc1.wld").unwrap()).print_pointers();
     //Header::new(&mut File::open("npc2.wld").unwrap()).print_pointers();
-    println!();
+    //println!();
     //Header::new(&mut File::open("test1.wld").unwrap()).print_pointers();
 
     //println!("{}", mem::size_of::<RawTile>());
@@ -1415,8 +1294,11 @@ fn main() -> io::Result<()> {
 
     file.read_to_end(&mut buffer)?;
 
-    let mut posbuff = PositionedBuffer::new(buffer, header.pointers[0]);
-    WorldHeader::from_buffer(&mut posbuff).print();
+    let mut posbuff = PositionedBuffer::new(buffer, 0);
+    let header = Header::from_buffer(&mut posbuff);
+    header.print_pointers();
+    /*WorldHeader::from_buffer(&mut posbuff).print();
+    */
 
     //println!("{}\n", buffer[header.pointers[1]]);
 
@@ -1465,7 +1347,7 @@ fn main() -> io::Result<()> {
 
     //println!("Sized: {}", std::mem::size_of::<WorldHeader>());
 
-    let mut tile_data: Vec<RawTile> = Vec::with_capacity(4200 * 1200);
+    //let mut tile_data: Vec<RawTile> = Vec::with_capacity(4200 * 1200);
 
     //println!("\n\nPopulation:\n");
     //populate_tiles(&mut tile_data, &buffer, header.pointers[1], 4200 * 1200);
@@ -1477,17 +1359,18 @@ fn main() -> io::Result<()> {
     println!("{}: {}", e, buffer[e]);
     }*/
 
-    /*Sign::from_buffer(&buffer, 2685607).print();
-    Sign::from_buffer(&buffer, 2685616).print();
-    */
+    //Sign::from_buffer(&buffer, 2685607).print();
+    posbuff.pos = header.pointers[3];
+    //Sign::from_buffer(&mut posbuff).print();
 
-    /*for chest in populate_chests(&buffer, header.pointers[2]) {
+    /*posbuff.pos = header.pointers[2];
+    for chest in populate_chests(&mut posbuff) {
         chest.print();
     }*/
 
-    /*for sign in populate_sign(&buffer, header.pointers[3]) {
+    for sign in populate_sign(&mut posbuff) {
         sign.print();
-    }*/
+    }
 
 
     Ok(())
