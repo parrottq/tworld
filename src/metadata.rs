@@ -1,4 +1,5 @@
 use crate::parsing::PositionedBuffer;
+use crate::writing::PrimitiveWriting;
 
 #[derive(Debug)]
 pub struct WorldHeader {
@@ -11,8 +12,8 @@ pub struct WorldHeader {
     pub world_right: u32,
     pub world_top: u32,
     pub world_bottom: u32,
-    pub world_max_width: u32,
     pub world_max_height: u32,
+    pub world_max_width: u32,
     pub expert_mode: bool,
     pub creation_time: u64,
     pub moon_type: u8,
@@ -120,7 +121,7 @@ pub struct WorldHeader {
     pub lunar_apocalypse_is_up: bool,
     pub temp_party_manual: bool,
     pub temp_party_genuine: bool,
-    pub temp_party_cooldown: bool,
+    pub temp_party_cooldown: u32,
     pub temp_party_celebrating_npcs: Vec<u32>,
     pub temp_sandstorm_happening: bool,
     pub temp_sandstorm_time_left: u32,
@@ -266,7 +267,6 @@ WorldHeader {
 
 impl WorldHeader {
     pub fn from_buffer(posbuff: &mut PositionedBuffer) -> WorldHeader {
-
         WorldHeader {
             world_name: posbuff.read_pstring(),
             seed_text: posbuff.read_pstring(),
@@ -277,8 +277,8 @@ impl WorldHeader {
             world_right: posbuff.read_u32(),
             world_top: posbuff.read_u32(),
             world_bottom: posbuff.read_u32(),
-            world_max_width: posbuff.read_u32(),
             world_max_height: posbuff.read_u32(),
+            world_max_width: posbuff.read_u32(),
             expert_mode: posbuff.read_bool(),
             creation_time: posbuff.read_u64(),
             moon_type: posbuff.read_u8(),
@@ -392,7 +392,7 @@ impl WorldHeader {
             lunar_apocalypse_is_up: posbuff.read_bool(),
             temp_party_manual: posbuff.read_bool(),
             temp_party_genuine: posbuff.read_bool(),
-            temp_party_cooldown: posbuff.read_bool(),
+            temp_party_cooldown: posbuff.read_u32(),
             temp_party_celebrating_npcs: posbuff.read_list(
                 &mut PositionedBuffer::read_u32,
                 &mut PositionedBuffer::read_u32,
@@ -528,7 +528,7 @@ impl WorldHeader {
             lunar_apocalypse_is_up: false,
             temp_party_manual: false,
             temp_party_genuine: false,
-            temp_party_cooldown: false,
+            temp_party_cooldown: 0,
             temp_party_celebrating_npcs: Vec::new(),
             temp_sandstorm_happening: false,
             temp_sandstorm_time_left: 0,
@@ -545,18 +545,18 @@ impl WorldHeader {
         // Several values should be filled in after; they are marked
         WorldHeader {
             world_name: name,
-            seed_text: String::new(), // Might do nothing
+            seed_text: String::new(),   // Might do nothing
             world_generator_version: 0, // No idea what this is for
-            world_unique_id: 0, // Think this one is important internally
-            world_id: 0, // Don't know how different than unique_id
+            world_unique_id: 0,         // Think this one is important internally
+            world_id: 0,                // Don't know how different than unique_id
             world_left: 0,
-            world_right: x*16,
+            world_right: x * 16,
             world_top: 0,
             world_bottom: y * 16,
             world_max_width: x,
             world_max_height: y,
             expert_mode: false, // Hard mode
-            creation_time: 0, // Easy enough
+            creation_time: 0,   // Easy enough
             moon_type: 0,
             tree_x0: 0, // Styles could be important
             tree_x1: 0,
@@ -575,17 +575,17 @@ impl WorldHeader {
             ice_style: 0,
             jungle_style: 0,
             hell_style: 0,
-            spawn_x: 0, // Spawn point
-            spawn_y: 0, // ..
+            spawn_x: 0,         // Spawn point
+            spawn_y: 0,         // ..
             world_surface: 0.0, // Surface level
-            world_rock: 0.0, // Rock level
-            temp_time: 0.0, // Nice to set the time
+            world_rock: 0.0,    // Rock level
+            temp_time: 0.0,     // Nice to set the time
             temp_day_time: 0,
             temp_moon_phase: 0,
             temp_blood_moon: 0,
             temp_eclipse: 0,
-            dungeon_x: 0, // Dungeon
-            dungeon_y: 0, // ..
+            dungeon_x: 0,   // Dungeon
+            dungeon_y: 0,   // ..
             crimson: false, // Crimson or Corruption
             downed_boss1: false,
             downed_boss2: false,
@@ -609,7 +609,7 @@ impl WorldHeader {
             spawn_meteor: false,
             shadow_orb_count: 0,
             altar_count: 0,
-            hard_mode: false,// Hard mode
+            hard_mode: false, // Hard mode
             invasion_delay: 0,
             invasion_size: 0,
             invasion_type: 0,
@@ -631,7 +631,7 @@ impl WorldHeader {
             desert_bg: 0,
             ocean_bg: 0,
             cloud_bgactive: 0,
-            cloud_count: 0, // Number of floating clouds
+            cloud_count: 0,  // Number of floating clouds
             wind_speed: 0.0, // This is for particle effects
             angler_who_finished_today: Vec::new(),
             saved_angler: false,
@@ -640,7 +640,7 @@ impl WorldHeader {
             saved_tax_collector: false,
             invasion_size_start: 0,
             temp_cultist_delay: 0,
-            kill_count: Vec::new(), // TODO: Fill Vecs
+            kill_count: vec![0u32; 580], // TODO: Fill Vecs
             fast_forward_time: false,
             downed_fishron: false,
             downed_martians: false,
@@ -662,7 +662,7 @@ impl WorldHeader {
             lunar_apocalypse_is_up: false,
             temp_party_manual: false,
             temp_party_genuine: false,
-            temp_party_cooldown: false,
+            temp_party_cooldown: 0,
             temp_party_celebrating_npcs: Vec::new(),
             temp_sandstorm_happening: false,
             temp_sandstorm_time_left: 0,
@@ -683,4 +683,147 @@ impl WorldHeader {
         self.world_max_width * self.world_max_height
     }
 
+    pub fn write_to_file(&self, file: &mut std::fs::File) -> usize {
+        file.write_string(&self.world_name);
+        file.write_string(&self.seed_text);
+        file.write_u64(&self.world_generator_version);
+        file.write_u128(&self.world_unique_id);
+        file.write_u32(&self.world_id);
+        file.write_u32(&self.world_left);
+        file.write_u32(&self.world_right);
+        file.write_u32(&self.world_top);
+        file.write_u32(&self.world_bottom);
+        file.write_u32(&self.world_max_height);
+        file.write_u32(&self.world_max_width);
+        file.write_bool(&self.expert_mode);
+        file.write_u64(&self.creation_time);
+        file.write_u8(&self.moon_type);
+        file.write_u32(&self.tree_x0);
+        file.write_u32(&self.tree_x1);
+        file.write_u32(&self.tree_x2);
+        file.write_u32(&self.tree_style0);
+        file.write_u32(&self.tree_style1);
+        file.write_u32(&self.tree_style2);
+        file.write_u32(&self.tree_style3);
+        file.write_u32(&self.cave_back0);
+        file.write_u32(&self.cave_back1);
+        file.write_u32(&self.cave_back2);
+        file.write_u32(&self.cave_style0);
+        file.write_u32(&self.cave_style1);
+        file.write_u32(&self.cave_style2);
+        file.write_u32(&self.cave_style3);
+        file.write_u32(&self.ice_style);
+        file.write_u32(&self.jungle_style);
+        file.write_u32(&self.hell_style);
+        file.write_u32(&self.spawn_x);
+        file.write_u32(&self.spawn_y);
+        file.write_f64(&self.world_surface);
+        file.write_f64(&self.world_rock);
+        file.write_f64(&self.temp_time);
+        file.write_u8(&self.temp_day_time);
+        file.write_u32(&self.temp_moon_phase);
+        file.write_u8(&self.temp_blood_moon);
+        file.write_u8(&self.temp_eclipse);
+        file.write_u32(&self.dungeon_x);
+        file.write_u32(&self.dungeon_y);
+        file.write_bool(&self.crimson);
+        file.write_bool(&self.downed_boss1);
+        file.write_bool(&self.downed_boss2);
+        file.write_bool(&self.downed_boss3);
+        file.write_bool(&self.downed_queen_bee);
+        file.write_bool(&self.downed_mech_boss1);
+        file.write_bool(&self.downed_mech_boss2);
+        file.write_bool(&self.downed_mech_boss3);
+        file.write_bool(&self.downed_mech_boss_any);
+        file.write_bool(&self.downed_plant_boss);
+        file.write_bool(&self.downed_golem_boss);
+        file.write_bool(&self.downed_slime_king);
+        file.write_bool(&self.saved_goblin);
+        file.write_bool(&self.saved_wizard);
+        file.write_bool(&self.saved_mech);
+        file.write_bool(&self.downed_goblins);
+        file.write_bool(&self.downed_clown);
+        file.write_bool(&self.downed_frost);
+        file.write_bool(&self.downed_pirates);
+        file.write_bool(&self.shadow_orb_smashed);
+        file.write_bool(&self.spawn_meteor);
+        file.write_u8(&self.shadow_orb_count);
+        file.write_u32(&self.altar_count);
+        file.write_bool(&self.hard_mode);
+        file.write_u32(&self.invasion_delay);
+        file.write_u32(&self.invasion_size);
+        file.write_u32(&self.invasion_type);
+        file.write_f64(&self.invasion_x);
+        file.write_f64(&self.slime_rain_time);
+        file.write_u8(&self.sundial_cooldown);
+        file.write_bool(&self.temp_rain);
+        file.write_u32(&self.temp_rain_time);
+        file.write_f32(&self.temp_max_rain);
+        file.write_u32(&self.ore_tier1);
+        file.write_u32(&self.ore_tier2);
+        file.write_u32(&self.ore_tier3);
+        file.write_u8(&self.tree_bg);
+        file.write_u8(&self.corrupt_bg);
+        file.write_u8(&self.jungle_bg);
+        file.write_u8(&self.snow_bg);
+        file.write_u8(&self.hallow_bg);
+        file.write_u8(&self.crimson_bg);
+        file.write_u8(&self.desert_bg);
+        file.write_u8(&self.ocean_bg);
+        file.write_u32(&self.cloud_bgactive);
+        file.write_u16(&self.cloud_count);
+        file.write_f32(&self.wind_speed);
+        file.write_list(
+            &self.angler_who_finished_today,
+            &mut PrimitiveWriting::write_string,
+            &mut PrimitiveWriting::write_u32,
+        );
+        file.write_bool(&self.saved_angler);
+        file.write_u32(&self.angler_quest);
+        file.write_bool(&self.saved_stylist);
+        file.write_bool(&self.saved_tax_collector);
+        file.write_u32(&self.invasion_size_start);
+        file.write_u32(&self.temp_cultist_delay);
+        file.write_list(
+            &self.kill_count,
+            &mut PrimitiveWriting::write_u32,
+            &mut PrimitiveWriting::write_u16,
+        );
+        file.write_bool(&self.fast_forward_time);
+        file.write_bool(&self.downed_fishron);
+        file.write_bool(&self.downed_martians);
+        file.write_bool(&self.downed_ancient_cultist);
+        file.write_bool(&self.downed_moonlord);
+        file.write_bool(&self.downed_halloween_king);
+        file.write_bool(&self.downed_halloween_tree);
+        file.write_bool(&self.downed_christmas_ice_queen);
+        file.write_bool(&self.downed_christmas_ice_santank);
+        file.write_bool(&self.downed_christmas_ice_tree);
+        file.write_bool(&self.downed_tower_solar);
+        file.write_bool(&self.downed_tower_vortex);
+        file.write_bool(&self.downed_tower_nebula);
+        file.write_bool(&self.downed_tower_stardust);
+        file.write_bool(&self.active_tower_solar);
+        file.write_bool(&self.active_tower_vortex);
+        file.write_bool(&self.active_tower_nebula);
+        file.write_bool(&self.active_tower_stardust);
+        file.write_bool(&self.lunar_apocalypse_is_up);
+        file.write_bool(&self.temp_party_manual);
+        file.write_bool(&self.temp_party_genuine);
+        file.write_u32(&self.temp_party_cooldown);
+        file.write_list(
+            &self.temp_party_celebrating_npcs,
+            &mut PrimitiveWriting::write_u32,
+            &mut PrimitiveWriting::write_u32,
+        );
+        file.write_bool(&self.temp_sandstorm_happening);
+        file.write_u32(&self.temp_sandstorm_time_left);
+        file.write_f32(&self.temp_sandstorm_severity);
+        file.write_f32(&self.temp_sandstorm_intended_severity);
+        file.write_bool(&self.saved_bartender);
+        file.write_bool(&self.downed_invastion_t1);
+        file.write_bool(&self.downed_invastion_t2);
+        file.write_bool(&self.downed_invastion_t3);
+        file.current_pos()
+    }
 }

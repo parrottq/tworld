@@ -6,6 +6,7 @@ use std::io;
 use std::io::Read;
 
 mod parsing;
+mod writing;
 use parsing::PositionedBuffer;
 
 mod chest;
@@ -16,8 +17,8 @@ mod npc;
 mod tile;
 mod world;
 
-
 fn main() -> io::Result<()> {
+    //TODO: Better error handling
     let file_name = "signtest.wld";
     //let mut file = File::open(file_name)?;
 
@@ -47,7 +48,6 @@ fn main() -> io::Result<()> {
      */
 
     //println!("{}\n", buffer[header.pointers[1]]);
-
 
     /*parse_tile(&buffer, header.pointers[1] as usize + 0)
     .1
@@ -93,16 +93,21 @@ fn main() -> io::Result<()> {
 
     //println!("Sized: {}", std::mem::size_of::<WorldHeader>());
 
-
     println!("Starting new...");
     let mut pbuffer = PositionedBuffer::new(buffer, 0);
     let wld = world::World::from_buffer(&mut pbuffer);
+    wld.file_header.print_pointers();
     println!("Done.\n\n");
 
-    for villager in wld.npcs.iter() {
+    /*for villager in wld.npcs.iter() {
         villager.print();
         println!();
-    }
+    }*/
+
+    println!("Starting write...");
+    let mut output_file = File::create("output2.wld")?;
+    wld.write_to_file(&mut output_file);
+    println!("Done.");
 
     //Chest::from_buffer(&buffer, 2634477).print();
     //Chest::from_buffer(&buffer, 2634733).print();
@@ -122,7 +127,6 @@ fn main() -> io::Result<()> {
     /*for sign in populate_sign(&mut posbuff) {
         sign.print();
     }*/
-
 
     Ok(())
 }

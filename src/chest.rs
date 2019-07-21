@@ -1,5 +1,7 @@
 use crate::parsing::PositionedBuffer;
+use crate::writing::PrimitiveWriting;
 
+#[derive(Clone)]
 pub enum Item {
     None,
     Normal(u16, u32),
@@ -35,6 +37,24 @@ impl Item {
         }
 
         Item::Buffed(amount, id, buff)
+    }
+
+    pub fn write(file: &mut std::fs::File, item: &Self) {
+        match item {
+            Item::None => file.write_u16(&0),
+
+            Item::Normal(amount, id) => {
+                file.write_u16(&amount);
+                file.write_u32(&id);
+                file.write_u8(&0);
+            }
+
+            Item::Buffed(amount, id, buff) => {
+                file.write_u16(&amount);
+                file.write_u32(&id);
+                file.write_u8(&buff);
+            }
+        }
     }
 }
 
@@ -79,6 +99,26 @@ impl Chest {
             original_size: 0,
         }
     }
+
+    pub fn write(file: &mut std::fs::File, chest: &Self) {
+        file.write_u32(&chest.x);
+        file.write_u32(&chest.y);
+        file.write_string(&chest.name);
+
+        file.write_list(
+            &chest.items,
+            &mut Item::write,
+            &mut |_: &mut std::fs::File, _: &u8| {},
+        )
+    }
+}
+
+pub fn write_chests(rooms: &Vec<Chest>, file: &mut std::fs::File) -> usize {
+    file.write_u16(&(rooms.len() as u16));
+    file.write_u16(&40);
+    file.write_list(rooms, &mut Chest::write, &mut PrimitiveWriting::write_void);
+
+    file.current_pos()
 }
 
 pub fn populate_chests(pbuffer: &mut PositionedBuffer) -> Vec<Chest> {
@@ -92,4 +132,3 @@ pub fn populate_chests(pbuffer: &mut PositionedBuffer) -> Vec<Chest> {
 
     pbuffer.read_list(&mut Chest::from_buffer, &mut |_| count)
 }
-

@@ -1,4 +1,3 @@
-
 extern crate num;
 use num::ToPrimitive;
 

@@ -1,4 +1,5 @@
 use crate::parsing::PositionedBuffer;
+use crate::writing::PrimitiveWriting;
 
 pub struct Sign {
     text: String,
@@ -23,6 +24,18 @@ impl Sign {
             y: pbuffer.read_u32(),
         }
     }
+
+    pub fn write(file: &mut std::fs::File, sign: &Self) {
+        file.write_string(&sign.text);
+        file.write_u32(&sign.x);
+        file.write_u32(&sign.y);
+    }
+}
+
+pub fn write_signs(signs: &Vec<Sign>, file: &mut std::fs::File) -> usize {
+    file.write_list(&signs, &mut Sign::write, &mut PrimitiveWriting::write_u16);
+
+    file.current_pos()
 }
 
 pub fn populate_sign(pbuffer: &mut PositionedBuffer) -> Vec<Sign> {
@@ -45,6 +58,23 @@ impl TileEntity {
             y: pbuffer.read_u16(),
         }
     }
+
+    pub fn write(file: &mut std::fs::File, tile_entity: &Self) {
+        file.write_u8(&tile_entity.variety);
+        file.write_u32(&tile_entity.id);
+        file.write_u16(&tile_entity.x);
+        file.write_u16(&tile_entity.y);
+    }
+}
+
+pub fn write_tile_entities(tile_entities: &Vec<TileEntity>, file: &mut std::fs::File) -> usize {
+    file.write_list(
+        &tile_entities,
+        &mut TileEntity::write,
+        &mut PrimitiveWriting::write_u32,
+    );
+
+    file.current_pos()
 }
 
 pub fn populate_tile_entities(pbuffer: &mut PositionedBuffer) -> Vec<TileEntity> {
@@ -66,6 +96,24 @@ impl WeightedPressurePlate {
             y: pbuffer.read_u32(),
         }
     }
+
+    pub fn write(file: &mut std::fs::File, plate: &Self) {
+        file.write_u32(&plate.x);
+        file.write_u32(&plate.y);
+    }
+}
+
+pub fn write_weighted_pressure_plates(
+    weighted_pressure_plates: &Vec<WeightedPressurePlate>,
+    file: &mut std::fs::File,
+) -> usize {
+    file.write_list(
+        &weighted_pressure_plates,
+        &mut WeightedPressurePlate::write,
+        &mut PrimitiveWriting::write_u32,
+    );
+
+    file.current_pos()
 }
 
 pub fn populate_weighted_pressure_plate(
@@ -91,6 +139,22 @@ impl RoomLocation {
             y: pbuffer.read_u32(),
         }
     }
+
+    pub fn write(file: &mut std::fs::File, room: &Self) {
+        file.write_u32(&room.npc_id);
+        file.write_u32(&room.x);
+        file.write_u32(&room.y);
+    }
+}
+
+pub fn write_rooms(rooms: &Vec<RoomLocation>, file: &mut std::fs::File) -> usize {
+    file.write_list(
+        &rooms,
+        &mut RoomLocation::write,
+        &mut PrimitiveWriting::write_u32,
+    );
+
+    file.current_pos()
 }
 
 pub fn populate_town(pbuffer: &mut PositionedBuffer) -> Vec<RoomLocation> {

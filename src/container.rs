@@ -1,4 +1,8 @@
 use crate::parsing::PositionedBuffer;
+use crate::tile::IMPORTANTS_BYTES;
+use crate::writing::PrimitiveWriting;
+
+use std::io::Write;
 
 pub struct Header {
     pub release: u32,
@@ -9,7 +13,6 @@ pub struct Header {
 }
 
 impl Header {
-
     pub fn from_buffer(pbuffer: &mut PositionedBuffer) -> Header {
         let release = pbuffer.read_u32();
 
@@ -60,6 +63,37 @@ impl Header {
             self.pointers[9]
         );
     }
+
+    pub fn write_to_file(&self, file: &mut std::fs::File) -> usize {
+        file.write_u32(&self.release);
+        file.write(&("relogic".bytes().map(|x| x as u8).collect::<Vec<u8>>()))
+            .unwrap();
+        file.write_u8(&self.filetype);
+        file.write_u32(&self.revision);
+        file.write_u64(&self.is_favorite);
+        file.write_list(
+            &vec![0u32; 10],
+            &mut PrimitiveWriting::write_u32,
+            &mut PrimitiveWriting::write_u16,
+        );
+
+        file.write_list(
+            &IMPORTANTS_BYTES.to_vec(),
+            &mut PrimitiveWriting::write_u8,
+            &mut |s: &mut std::fs::File, _: &u16| s.write_u16(&470),
+        );
+
+        file.current_pos()
+    }
+
+    pub fn write_pointers(&self, file: &mut std::fs::File, pointers: Vec<u32>) {
+        file.set_current_pos(24);
+        file.write_list(
+            &pointers,
+            &mut PrimitiveWriting::write_u32,
+            &mut PrimitiveWriting::write_u16,
+        );
+    }
 }
 
 pub struct Footer {
@@ -75,5 +109,13 @@ impl Footer {
             world_name: pbuffer.read_pstring(),
             world_id: pbuffer.read_u32(),
         }
+    }
+
+    pub fn write_to_file(&self, file: &mut std::fs::File) -> usize {
+        file.write_bool(&true);
+        file.write_string(&self.world_name);
+        file.write_u32(&self.world_id);
+
+        file.current_pos()
     }
 }

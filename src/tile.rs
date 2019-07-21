@@ -1,6 +1,6 @@
-
 use crate::metadata;
 use crate::parsing::PositionedBuffer;
+use crate::writing::PrimitiveWriting;
 // Data
 // 0-8: tile id
 // 9-16: liquid amount
@@ -15,23 +15,20 @@ use crate::parsing::PositionedBuffer;
 #[derive(Clone, Copy, PartialEq)]
 pub struct RawTile {
     data: u64,
-    important_x: u16,
-    important_y: u16,
+    pub important_x: u16,
+    pub important_y: u16,
 }
 
-impl RawTile {
+pub static IMPORTANTS_BYTES: [u8; 59] = [
+    0x38, 0xFC, 0x3F, 0xBD, 0x1E, 0x04, 0x84, 0x20, 0x80, 0xE7, 0xFE, 0xFF, 0xFF, 0x47, 0x06, 0x60,
+    0xF3, 0xEF, 0x21, 0x00, 0x20, 0x78, 0x04, 0x0F, 0x00, 0x82, 0x96, 0x1F, 0x98, 0xFA, 0xFF, 0x40,
+    0x00, 0xE0, 0xF8, 0xEF, 0xFF, 0xFF, 0x7F, 0xF4, 0x19, 0xC0, 0x0E, 0x20, 0xDC, 0x1F, 0xF0, 0x17,
+    0xFC, 0x0F, 0x60, 0x7C, 0x98, 0x2B, 0xF8, 0x3F, 0xF0, 0xE3, 0x3F,
+];
 
-    pub const fn is_tile_important(tile_id: u16) -> bool {
-        [
-            0x38, 0xFC, 0x3F, 0xBD, 0x1E, 0x04, 0x84, 0x20, 0x80, 0xE7, 0xFE, 0xFF, 0xFF, 0x47,
-            0x06, 0x60, 0xF3, 0xEF, 0x21, 0x00, 0x20, 0x78, 0x04, 0x0F, 0x00, 0x82, 0x96, 0x1F,
-            0x98, 0xFA, 0xFF, 0x40, 0x00, 0xE0, 0xF8, 0xEF, 0xFF, 0xFF, 0x7F, 0xF4, 0x19, 0xC0,
-            0x0E, 0x20, 0xDC, 0x1F, 0xF0, 0x17, 0xFC, 0x0F, 0x60, 0x7C, 0x98, 0x2B, 0xF8, 0x3F,
-            0xF0, 0xE3, 0x3F,
-        ][(tile_id / 8) as usize]
-            >> (tile_id % 8)
-            & 0b1
-            == 0b1
+impl RawTile {
+    pub fn is_tile_important(tile_id: u16) -> bool {
+        IMPORTANTS_BYTES[(tile_id / 8) as usize] >> (tile_id % 8) & 0b1 == 0b1
     }
 
     pub fn print(&self) {
@@ -49,7 +46,6 @@ impl RawTile {
             self.get_tile_paint(),
             self.get_wall_paint(),
         )
-
     }
 
     pub fn new() -> RawTile {
@@ -195,8 +191,112 @@ impl RawTile {
         self.important_y = y;
     }
 
+    pub fn write(&self, file: &mut std::fs::File, repetitions: u16) {
+        let mut flag3 = 0;
+        flag3 |= self.get_actuator() << 1;
+        flag3 |= self.get_actuator_enabled() << 2;
+        flag3 |= if self.get_tile_paint() != 0 {
+            1 << 3
+        } else {
+            0
+        };
+        flag3 |= if self.get_wall_paint() != 0 {
+            1 << 4
+        } else {
+            0
+        };
+
+        let mut flag2 = 0;
+        flag2 |= if flag3 != 0 { 1 } else { 0 };
+        flag2 |= self.get_red_wiring() << 1;
+        flag2 |= self.get_blue_wiring() << 2;
+        flag2 |= self.get_green_wiring() << 3;
+        flag2 |= self.get_tile_alter() << 4;
+
+        let mut flag1 = 0;
+        flag1 |= if flag2 != 0 { 1 } else { 0 };
+        flag1 |= if self.get_tile_id() != 511 { 1 << 1 } else { 0 };
+        flag1 |= if self.get_wall_id() != 0 { 1 << 2 } else { 0 };
+        flag1 |= self.get_fluid_type() << 3;
+        flag1 |= if self.get_tile_id() != 511 && self.get_tile_id() > ((1 << 8) - 1) {
+            //println!("ID 16");
+            1 << 5
+        } else {
+            0
+        };
+        flag1 |= if repetitions > ((1 << 8) - 1) {
+            //println!("RLE 16");
+            1 << 7
+        } else {
+            flag1 |= if repetitions > 0 { 1 << 6 } else { 0 };
+            0
+        };
+        //println!("{}:1\n{}:2\n{}:3\n", flag1, flag2, flag3);
+
+        file.write_u8(&flag1);
+        if flag2 != 0 {
+            file.write_u8(&flag2);
+
+            if flag3 != 0 {
+                file.write_u8(&flag3);
+            }
+        }
+
+        // Tile ID
+        let tile_id = self.get_tile_id();
+        if tile_id != 511 {
+            if tile_id > ((1 << 8) - 1) {
+                // u16 tile
+                file.write_u16(&tile_id);
+            } else {
+                // u8 tile
+                file.write_u8(&(tile_id as u8));
+            }
+
+            // Important
+            if RawTile::is_tile_important(tile_id) {
+                file.write_u16(&self.important_x);
+                file.write_u16(&self.important_y);
+            }
+
+            // Tile Paint
+            let tile_paint = self.get_tile_paint();
+            if tile_paint != 0 {
+                file.write_u8(&tile_paint);
+            }
+        }
+
+        // Wall ID
+        let wall_id = self.get_wall_id();
+        if wall_id != 0 {
+            file.write_u8(&wall_id);
+        }
+
+        // Wall Paint
+        let wall_paint = self.get_wall_paint();
+        if wall_paint != 0 {
+            file.write_u8(&wall_paint);
+        }
+
+        // Fluid amount
+        let fluid_amount = self.get_fluid_amount();
+        if fluid_amount != 0 {
+            file.write_u8(&fluid_amount);
+        }
+
+        if repetitions > 0 {
+            if repetitions > ((1 << 8) - 1) {
+                // u16
+                file.write_u16(&repetitions);
+            } else {
+                // u8
+                file.write_u8(&(repetitions as u8));
+            }
+        }
+    }
 }
 
+// TODO: Move into RawTile impl
 pub fn parse_tile(pbuffer: &mut PositionedBuffer) -> (u16, RawTile) {
     let mut tile = RawTile::new();
 
@@ -244,7 +344,6 @@ pub fn parse_tile(pbuffer: &mut PositionedBuffer) -> (u16, RawTile) {
             // Frame X & Y
             tile.set_important(pbuffer.read_u16(), pbuffer.read_u16());
         }
-
     } else {
         //println!("No tile present");
         tile.set_tile_id(511);
@@ -289,10 +388,6 @@ pub fn parse_tile(pbuffer: &mut PositionedBuffer) -> (u16, RawTile) {
             //println!("u8");
             pbuffer.read_u8() as u16
         };
-
-        if (flag1 >> 6) & 0b11 == 0b10 {
-            //println!("Alignment flag!");
-        }
     } else {
         //println!("No RLE");
     }
@@ -330,4 +425,27 @@ pub fn populate_tiles(
     }
 
     tiles
+}
+
+pub fn write_tiles(tiles: &Vec<RawTile>, file: &mut std::fs::File, height: u32) -> usize {
+    let mut last_tile = tiles[0];
+    let mut count = 0;
+    let mut pos = 1;
+
+    while pos < tiles.len() {
+        let tile = tiles[pos];
+
+        if tile != last_tile || (pos % height as usize) == 0 {
+            last_tile.write(file, count);
+            last_tile = tile;
+            count = 0;
+        } else {
+            count += 1;
+        }
+
+        pos += 1;
+    }
+    last_tile.write(file, count);
+
+    file.current_pos()
 }

@@ -1,4 +1,3 @@
-
 use crate::parsing::PositionedBuffer;
 use crate::{chest, container, metadata, misc, npc, tile};
 pub struct World {
@@ -58,5 +57,28 @@ impl World {
             town_manager,
             footer,
         }
+    }
+
+    pub fn write_to_file(&self, file: &mut std::fs::File) {
+        let pointers = [
+            self.file_header.write_to_file(file),
+            self.world_header.write_to_file(file),
+            tile::write_tiles(&self.tiles, file, self.world_header.world_max_height),
+            chest::write_chests(&self.chests, file),
+            misc::write_signs(&self.signs, file),
+            npc::write_npcs(&self.npcs, file),
+            misc::write_tile_entities(&self.tile_entities, file),
+            misc::write_weighted_pressure_plates(&self.weighted_plates, file),
+            misc::write_rooms(&self.town_manager, file),
+            0,
+        ];
+
+        println!("Pointers: {:?}", pointers);
+
+        self.footer.write_to_file(file);
+        self.file_header.write_pointers(
+            file,
+            pointers.iter().map(|x| *x as u32).collect::<Vec<u32>>(),
+        );
     }
 }
