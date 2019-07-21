@@ -39,20 +39,20 @@ impl Item {
         Item::Buffed(amount, id, buff)
     }
 
-    pub fn write(file: &mut std::fs::File, item: &Self) {
+    pub fn write(file: &mut std::fs::File, item: Self) {
         match item {
-            Item::None => file.write_u16(&0),
+            Item::None => file.write_u16(0),
 
             Item::Normal(amount, id) => {
-                file.write_u16(&amount);
-                file.write_u32(&id);
-                file.write_u8(&0);
+                file.write_u16(amount);
+                file.write_u32(id);
+                file.write_u8(0);
             }
 
             Item::Buffed(amount, id, buff) => {
-                file.write_u16(&amount);
-                file.write_u32(&id);
-                file.write_u8(&buff);
+                file.write_u16(amount);
+                file.write_u32(id);
+                file.write_u8(buff);
             }
         }
     }
@@ -62,6 +62,7 @@ pub fn parse_chest_items(pbuffer: &mut PositionedBuffer) -> Vec<Item> {
     pbuffer.read_list(&mut Item::from_buffer, &mut |_| 40)
 }
 
+#[derive(Clone)]
 pub struct Chest {
     name: String,
     x: u32,
@@ -100,22 +101,22 @@ impl Chest {
         }
     }
 
-    pub fn write(file: &mut std::fs::File, chest: &Self) {
-        file.write_u32(&chest.x);
-        file.write_u32(&chest.y);
-        file.write_string(&chest.name);
+    pub fn write(file: &mut std::fs::File, chest: Self) {
+        file.write_u32(chest.x);
+        file.write_u32(chest.y);
+        file.write_string(chest.name.clone());
 
         file.write_list(
             &chest.items,
             &mut Item::write,
-            &mut |_: &mut std::fs::File, _: &u8| {},
+            &mut |_: &mut std::fs::File, _: u8| {},
         )
     }
 }
 
 pub fn write_chests(rooms: &Vec<Chest>, file: &mut std::fs::File) -> usize {
-    file.write_u16(&(rooms.len() as u16));
-    file.write_u16(&40);
+    file.write_u16(rooms.len() as u16);
+    file.write_u16(40);
     file.write_list(rooms, &mut Chest::write, &mut PrimitiveWriting::write_void);
 
     file.current_pos()

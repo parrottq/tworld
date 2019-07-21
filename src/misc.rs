@@ -1,6 +1,7 @@
 use crate::parsing::PositionedBuffer;
 use crate::writing::PrimitiveWriting;
 
+#[derive(Clone)]
 pub struct Sign {
     text: String,
     x: u32,
@@ -25,10 +26,10 @@ impl Sign {
         }
     }
 
-    pub fn write(file: &mut std::fs::File, sign: &Self) {
-        file.write_string(&sign.text);
-        file.write_u32(&sign.x);
-        file.write_u32(&sign.y);
+    pub fn write(file: &mut std::fs::File, sign: Self) {
+        file.write_string(sign.text);
+        file.write_u32(sign.x);
+        file.write_u32(sign.y);
     }
 }
 
@@ -42,6 +43,7 @@ pub fn populate_sign(pbuffer: &mut PositionedBuffer) -> Vec<Sign> {
     pbuffer.read_list(&mut Sign::from_buffer, &mut PositionedBuffer::read_u16)
 }
 
+#[derive(Clone)]
 pub struct TileEntity {
     variety: u8,
     id: u32,
@@ -59,11 +61,11 @@ impl TileEntity {
         }
     }
 
-    pub fn write(file: &mut std::fs::File, tile_entity: &Self) {
-        file.write_u8(&tile_entity.variety);
-        file.write_u32(&tile_entity.id);
-        file.write_u16(&tile_entity.x);
-        file.write_u16(&tile_entity.y);
+    pub fn write(file: &mut std::fs::File, tile_entity: Self) {
+        file.write_u8(tile_entity.variety);
+        file.write_u32(tile_entity.id);
+        file.write_u16(tile_entity.x);
+        file.write_u16(tile_entity.y);
     }
 }
 
@@ -84,6 +86,7 @@ pub fn populate_tile_entities(pbuffer: &mut PositionedBuffer) -> Vec<TileEntity>
     )
 }
 
+#[derive(Clone)]
 pub struct WeightedPressurePlate {
     x: u32,
     y: u32,
@@ -97,9 +100,9 @@ impl WeightedPressurePlate {
         }
     }
 
-    pub fn write(file: &mut std::fs::File, plate: &Self) {
-        file.write_u32(&plate.x);
-        file.write_u32(&plate.y);
+    pub fn write(file: &mut std::fs::File, plate: Self) {
+        file.write_u32(plate.x);
+        file.write_u32(plate.y);
     }
 }
 
@@ -125,6 +128,7 @@ pub fn populate_weighted_pressure_plate(
     )
 }
 
+#[derive(Clone)]
 pub struct RoomLocation {
     npc_id: u32,
     x: u32,
@@ -140,10 +144,10 @@ impl RoomLocation {
         }
     }
 
-    pub fn write(file: &mut std::fs::File, room: &Self) {
-        file.write_u32(&room.npc_id);
-        file.write_u32(&room.x);
-        file.write_u32(&room.y);
+    pub fn write(file: &mut std::fs::File, room: Self) {
+        file.write_u32(room.npc_id);
+        file.write_u32(room.x);
+        file.write_u32(room.y);
     }
 }
 

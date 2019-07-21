@@ -64,19 +64,19 @@ impl NPC {
     }
 
     pub fn write(&self, file: &mut std::fs::File) {
-        file.write_u32(&self.variety);
+        file.write_u32(self.variety);
 
         if self.is_town {
-            file.write_string(&self.name);
+            file.write_string(self.name.clone());
         }
 
-        file.write_f32(&self.x);
-        file.write_f32(&self.y);
+        file.write_f32(self.x);
+        file.write_f32(self.y);
 
         if self.is_town {
-            file.write_bool(&self.homeless);
-            file.write_u32(&self.x_home);
-            file.write_u32(&self.y_home);
+            file.write_bool(self.homeless);
+            file.write_u32(self.x_home);
+            file.write_u32(self.y_home);
         }
     }
 }
@@ -93,16 +93,16 @@ pub fn write_npcs(npcs: &Vec<NPC>, file: &mut std::fs::File) -> usize {
     }
 
     for npc in town {
-        file.write_bool(&true);
+        file.write_bool(true);
         npc.write(file);
     }
-    file.write_bool(&false);
+    file.write_bool(false);
 
     for npc in npc_enemies {
-        file.write_bool(&true);
+        file.write_bool(true);
         npc.write(file);
     }
-    file.write_bool(&false);
+    file.write_bool(false);
 
     file.current_pos()
 }

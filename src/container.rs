@@ -65,12 +65,12 @@ impl Header {
     }
 
     pub fn write_to_file(&self, file: &mut std::fs::File) -> usize {
-        file.write_u32(&self.release);
+        file.write_u32(self.release);
         file.write(&("relogic".bytes().map(|x| x as u8).collect::<Vec<u8>>()))
             .unwrap();
-        file.write_u8(&self.filetype);
-        file.write_u32(&self.revision);
-        file.write_u64(&self.is_favorite);
+        file.write_u8(self.filetype);
+        file.write_u32(self.revision);
+        file.write_u64(self.is_favorite);
         file.write_list(
             &vec![0u32; 10],
             &mut PrimitiveWriting::write_u32,
@@ -80,7 +80,7 @@ impl Header {
         file.write_list(
             &IMPORTANTS_BYTES.to_vec(),
             &mut PrimitiveWriting::write_u8,
-            &mut |s: &mut std::fs::File, _: &u16| s.write_u16(&470),
+            &mut |s: &mut std::fs::File, _: u16| s.write_u16(470),
         );
 
         file.current_pos()
@@ -112,9 +112,9 @@ impl Footer {
     }
 
     pub fn write_to_file(&self, file: &mut std::fs::File) -> usize {
-        file.write_bool(&true);
-        file.write_string(&self.world_name);
-        file.write_u32(&self.world_id);
+        file.write_bool(true);
+        file.write_string(self.world_name.clone());
+        file.write_u32(self.world_id);
 
         file.current_pos()
     }

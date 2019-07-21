@@ -233,12 +233,12 @@ impl RawTile {
         };
         //println!("{}:1\n{}:2\n{}:3\n", flag1, flag2, flag3);
 
-        file.write_u8(&flag1);
+        file.write_u8(flag1);
         if flag2 != 0 {
-            file.write_u8(&flag2);
+            file.write_u8(flag2);
 
             if flag3 != 0 {
-                file.write_u8(&flag3);
+                file.write_u8(flag3);
             }
         }
 
@@ -247,50 +247,50 @@ impl RawTile {
         if tile_id != 511 {
             if tile_id > ((1 << 8) - 1) {
                 // u16 tile
-                file.write_u16(&tile_id);
+                file.write_u16(tile_id);
             } else {
                 // u8 tile
-                file.write_u8(&(tile_id as u8));
+                file.write_u8(tile_id as u8);
             }
 
             // Important
             if RawTile::is_tile_important(tile_id) {
-                file.write_u16(&self.important_x);
-                file.write_u16(&self.important_y);
+                file.write_u16(self.important_x);
+                file.write_u16(self.important_y);
             }
 
             // Tile Paint
             let tile_paint = self.get_tile_paint();
             if tile_paint != 0 {
-                file.write_u8(&tile_paint);
+                file.write_u8(tile_paint);
             }
         }
 
         // Wall ID
         let wall_id = self.get_wall_id();
         if wall_id != 0 {
-            file.write_u8(&wall_id);
+            file.write_u8(wall_id);
         }
 
         // Wall Paint
         let wall_paint = self.get_wall_paint();
         if wall_paint != 0 {
-            file.write_u8(&wall_paint);
+            file.write_u8(wall_paint);
         }
 
         // Fluid amount
         let fluid_amount = self.get_fluid_amount();
         if fluid_amount != 0 {
-            file.write_u8(&fluid_amount);
+            file.write_u8(fluid_amount);
         }
 
         if repetitions > 0 {
             if repetitions > ((1 << 8) - 1) {
                 // u16
-                file.write_u16(&repetitions);
+                file.write_u16(repetitions);
             } else {
                 // u8
-                file.write_u8(&(repetitions as u8));
+                file.write_u8(repetitions as u8);
             }
         }
     }
